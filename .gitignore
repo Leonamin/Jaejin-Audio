@@ -1,0 +1,8 @@
+# ignore audio format
+*.wav
+*.ogg
+*.flac
+*.flac
+
+# ignore Build files
+build/
