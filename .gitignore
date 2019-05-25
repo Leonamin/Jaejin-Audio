@@ -4,5 +4,9 @@
 *.flac
 *.flac
 
-# ignore Build files
+# ignore etc files
 build/
+.vscode/
+
+# ignore C compile files
+*.o
