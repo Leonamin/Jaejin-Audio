@@ -8,5 +8,6 @@
 build/
 .vscode/
 
-# ignore C compile files
+# ignore C other files
 *.o
+*.out
