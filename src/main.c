@@ -68,6 +68,9 @@ int procaudio(char* filename)
         return -1;
     }
 
+    printf("Channles: %d\n", wavheader.nChannels);
+    printf("Sampling Rate: %d\n", wavheader.sampleRate);
+
     ret = snd_pcm_open(&handle, "default", SND_PCM_STREAM_PLAYBACK, 0);
     if(ret < 0) {
         fprintf(stderr, "Unable to open pcm device: %s\n", snd_strerror(ret));
@@ -110,7 +113,7 @@ int procaudio(char* filename)
     val = wavheader.sampleRate;
     snd_pcm_hw_params_set_rate_near(handle, params, &val, &dir);
 
-    frames = 16;
+    frames = 2048;
     snd_pcm_hw_params_set_period_size_near(handle, params, &frames, &dir);
 
     ret = snd_pcm_hw_params(handle, params);
