@@ -9,7 +9,99 @@
 WAVHEADER wavheader;
 
 int procaudio(char* filename);
-int setupDSP(snd_pcm_t *dev, int buf_size, int format, int sampleRate, int channels);
+
+int setupDSP(snd_pcm_t *handle, int format, int sampleRate, int channels, int period, int *exact_periodsize)
+{
+    snd_pcm_hw_params_t *hw_params;
+    int exact_format = 0, dir, frame;
+    unsigned int val;
+    snd_pcm_uframes_t periodsize, buffersize, exact_buffersize;
+
+    /* hw paramiter 할당 및 초기화 */
+    if(snd_pcm_hw_params_malloc(&hw_params) < 0) {
+        fprintf(stderr, "Could not malloc paramiter\n");
+        return -1;
+    }
+
+    if(snd_pcm_hw_params_any(handle, hw_params) < 0) {
+        fprintf(stderr, "Could not initialize paramiter\n");
+        return -1;
+    }
+    /* 오디오 데이터 접근 타입 설정 */
+    if(snd_pcm_hw_params_set_access(handle, hw_params, SND_PCM_ACCESS_RW_INTERLEAVED) < 0) {
+        fprintf(stderr, "Could not set access type\n");
+        return -1;
+    }
+
+    /* 채널 설정 */
+    printf("Audio Channel Mode : %s\n", (channels) ? "Stereo" : "Mono");
+    if(snd_pcm_hw_params_set_channels(handle, hw_params, channels) < 0) {
+        fprintf(stderr, "Error setting channels\n");
+        return -1;
+    }
+
+    /* 오디오 포맷 설정 */
+
+    printf("Wave Bytes: %d\n", format);
+    switch (format)
+    {
+        case 1:                     /* Mono 8 bit */
+            exact_format = SND_PCM_FORMAT_U8;
+            break;
+        case 2:                     /* Mono 16 bit or Stereo 8 bit */
+            exact_format = (channels == 1) ? SND_PCM_FORMAT_S16_LE : SND_PCM_FORMAT_U8;
+            break;
+        case 4:                     /* If Stereo file */
+            exact_format = SND_PCM_FORMAT_S16_LE;
+            break; 
+        default:
+            printf("Unknown Byte rate for sound\n");
+            break;
+    }
+
+    if(snd_pcm_hw_params_set_format(handle, hw_params, exact_format) < 0) {
+        fprintf(stderr, "Could not set Sample format\n");
+        return -1;
+    }
+
+    /* 샘플링 레이트 설정 */
+    printf("Wave Sampling Rate: 0x%u\n", sampleRate);
+    val = sampleRate;
+    if(snd_pcm_hw_params_set_rate_near(handle, hw_params, &val, &dir) < 0) {
+        fprintf(stderr, "Could not setting sampling rate\n");
+        return -1;
+    }
+
+    /* 주기 설정 */
+    frame = period;
+    if(snd_pcm_hw_params_set_periods_near(handle, hw_params, frame, 0) < 0) {
+        fprintf(stderr, "Error setting period\n");
+        return -1;
+    }
+
+    /* 버퍼 크기 설정*/
+    periodsize = 8192;
+    buffersize = (periodsize * period) >> 2;
+    exact_buffersize = buffersize;
+    if(snd_pcm_hw_params_set_buffer_size_near(handle, hw_params, exact_buffersize) < 0) {
+        fprintf(stderr, "Error setting buffer size\n");
+        return -1;
+    }
+    // 가장 근처 값으로 성정된 경우
+    if ( buffersize != exact_buffersize ) {
+        fprintf(stderr, "The buffersize %lu bytes is not supported by your hardware.\n"
+                        "==> Using %lu bytes instead.\n", buffersize, exact_buffersize);
+        periodsize = (exact_buffersize << 2) / frame;
+    }
+    /* ALSA 드라이버에 오디오 디바이스 파라미터 적용 */
+    if ( snd_pcm_hw_params(handle, hw_params) < 0 ) {
+        fprintf(stderr, "Error setting HW params.\n");
+        return -1;
+    }
+    *exact_periodsize = periodsize;
+
+    return 1;
+}
 
 int main(int argc, char* argv[])
 {
@@ -40,9 +132,9 @@ int procaudio(char* filename)
     char* fmt;
     snd_pcm_t   *handle;
     snd_pcm_hw_params_t *params;
-    snd_pcm_uframes_t   frames;
+    snd_pcm_uframes_t   periodsize;
 
-    int channels, format, dir, buf_size, count;
+    int channels, format, dir, buf_size, count, period;
     long loops;
     unsigned int val;
     char *buffer;
@@ -77,56 +169,12 @@ int procaudio(char* filename)
         return -1;
     }
     
-    snd_pcm_hw_params_malloc(&params);
-    if(snd_pcm_hw_params_any(handle, params) < 0) {
-        fprintf(stderr, "Can not configure this PCM device\n");
-        return -1;
-    }
-
-    channels = wavheader.nChannels;
-    printf("Wave Channels Mode: %s\n", (channels) ? "Stereo" : "Mono");
-    snd_pcm_hw_params_set_channels(handle, params, channels);
-
-    printf("%d\n",wavheader.avgBytesPerSec);
-
-    printf("Wave Bytes: %d\n", wavheader.nblockAlign);
-    switch (wavheader.nblockAlign)
-    {
-        case 1:
-            format = SND_PCM_FORMAT_U8;
-            break;
-        case 2:
-            format = (channels == 1) ? SND_PCM_FORMAT_S16_LE : SND_PCM_FORMAT_U8;
-            break;
-        case 4:
-            format = SND_PCM_FORMAT_S16_LE;
-            break; 
-        default:
-            printf("Unknown Byte rate for sound\n");
-            break;
-    }
-
-    snd_pcm_hw_params_set_access(handle, params, SND_PCM_ACCESS_RW_INTERLEAVED);
-    snd_pcm_hw_params_set_format(handle, params, format);
-
-    printf("Wave Sampling Rate: 0x%d\n", wavheader.sampleRate);
-    val = wavheader.sampleRate;
-    snd_pcm_hw_params_set_rate_near(handle, params, &val, &dir);
-
-    frames = 2048;
-    snd_pcm_hw_params_set_period_size_near(handle, params, &frames, &dir);
-
-    ret = snd_pcm_hw_params(handle, params);
-    if(ret < 0) {
-        fprintf(stderr, "Unable to set hw parameters: %s\n", snd_strerror(ret));
-        return -1;
-    }
-
-    snd_pcm_hw_params_get_period_size(params, &frames, &dir);
-    buf_size = frames * channels * ((format == SND_PCM_FORMAT_S16_LE) ? 2 : 1);
-    buffer = (char*)malloc(buf_size);
-
-    snd_pcm_hw_params_get_period_time(params, &val, &dir);
+    setupDSP(handle, \
+            wavheader.nblockAlign, \
+            wavheader.sampleRate, \
+            wavheader.nChannels, \
+            period, \
+            &periodsize);
 
     do {
         if((count = read(fd, buffer, buf_size)) <= 0) 
@@ -153,8 +201,3 @@ int procaudio(char* filename)
     return 0;
 }
 
-int setupDSP(snd_pcm_t *dev, int buf_size, int format, int sampleRate, int channels)
-{
-    snd_pcm_hw_params_t *hw_params;
-    snd_pcm_uframes_t frames;
-}
