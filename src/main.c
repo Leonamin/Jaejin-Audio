@@ -9,7 +9,6 @@
 WAVHEADER wavheader;
 
 int procaudio(char* filename);
-
 int setupDSP(snd_pcm_t *handle, int format, int sampleRate, int channels, int period, snd_pcm_uframes_t *exact_periodsize)
 {
     snd_pcm_hw_params_t *hw_params;
@@ -95,7 +94,7 @@ int setupDSP(snd_pcm_t *handle, int format, int sampleRate, int channels, int pe
                         "==> Using %lu bytes instead.\n", buffersize, exact_buffersize);
         periodsize = (exact_buffersize << 2) / frame;
     }
-    printf("period size: %d\n", periodsize);
+    printf("period size: %ld\n", periodsize);
     /* ALSA 드라이버에 오디오 디바이스 파라미터 적용 */
     if ( snd_pcm_hw_params(handle, hw_params) < 0 ) {
         fprintf(stderr, "Error setting HW params.\n");
@@ -175,23 +174,7 @@ int procaudio(char* filename)
             &periodsize);
     buffer = (unsigned char *)malloc(periodsize);
     frames = periodsize >> 2;
-    /*
-    do {
-        if((count = read(fd, buffer, frames)) <= 0) 
-            break;
-        ret = snd_pcm_writei(handle, buffer, frames);
-        if(ret == -EPIPE) {
-            //underrun
-            fprintf(stderr, "Underrun occurred\n");
-            snd_pcm_prepare(handle);
-        } else if(ret < 0) {
-            fprintf(stderr, "error from write: %s\n", snd_strerror(ret));
-        } else if(ret != (int)frames) {
-            fprintf(stderr, "short write, write %d frames\n", ret);
-        }
-    } while(count == buf_size);
-    */
-
+    
     while ( (count = read(fd, buffer, frames << 2)) > 0 ) {
         if ( (pcm_return = snd_pcm_writei(handle, buffer, count >> 2)) < 0 ) {
             snd_pcm_prepare(handle);
