@@ -1,3 +1,5 @@
+#define _GNU_SOURCE
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <poll.h>
@@ -8,6 +10,7 @@
 #include <assert.h>
 #include <unistd.h>
 #include <sys/mman.h>
+#include <sys/user.h>
 #include <stdint.h>
 #include <pthread.h>
 #include <errno.h>
@@ -21,25 +24,25 @@
 typedef struct
 {   
 	// WAV FMT
-	uint8_t   FmtID[4];
-	uint32_t    FmtSize;
-	uint16_t  AudioFormat;
-	uint16_t  NumChannels;
-	uint32_t    SampleRate;
-	uint32_t    AvgByteRate;
-	uint16_t  BlockAlign;
-	uint16_t  BitPerSample;
+	uint8_t			FmtID[4];
+	uint32_t	 	FmtSize;
+	uint16_t		AudioFormat;
+	uint16_t  		NumChannels;
+	uint32_t 		SampleRate;
+	uint32_t		AvgByteRate;
+	uint16_t		BlockAlign;
+	uint16_t		BitPerSample;
 
 	// DATA FMT
-	uint8_t	DataID[4];
-	uint32_t	DataSize;
+	uint8_t			DataID[4];
+	uint32_t		DataSize;
 } META;
 
 typedef struct {
-	int sockid;
-	int AvgByte;
-	void * buf[2];
-	int bufsize;
+	int				sockid;
+	int				AvgByte;
+	void*			buf[2];
+	int				bufsize;
 	pthread_mutex_t mutex[2];
 } BUFF;
 
@@ -147,10 +150,8 @@ int create_buffer(BUFF * bufPack, unsigned int AvgByteRate, int timeMs)
 			AvgByteRate, timeMs, timeScope, buffersize);
 #endif
 
-	bufPack->buf[0] = mmap(NULL, buffersize, PROT_READ | PROT_WRITE,
-			MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-	bufPack->buf[1] = mmap(NULL, buffersize, PROT_READ | PROT_WRITE,
-			MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+	mremap(bufPack->buf[0], bufPack->bufsize, buffersize, 0);
+	mremap(bufPack->buf[1], bufPack->bufsize, buffersize, 0);
 
 	bufPack->bufsize = buffersize;
 
@@ -161,7 +162,7 @@ int create_buffer(BUFF * bufPack, unsigned int AvgByteRate, int timeMs)
 
 	if(bufPack->buf[0] == MAP_FAILED || bufPack->buf[1] == MAP_FAILED)
 	{
-		perror("mmap()");
+		perror("mremap()");
 		exit(EXIT_FAILURE);
 	}
 
@@ -175,6 +176,9 @@ void * recv_buffer(void * buff_origin)
 
 	BUFF * buff = buff_origin;
 
+	send(buff->sockid, "SIZE ", sizeof("SIZE "), 0);
+	send(buff->sockid, &(buff->bufsize), sizeof(buff->bufsize), 0);
+
 	while(buff->AvgByte > count)
 	{
 		for(int i = 0; i < 2; i++)
@@ -186,10 +190,8 @@ void * recv_buffer(void * buff_origin)
 #endif
 
 			send(buff->sockid, "DATA ", sizeof("DATA "), 0);
-			send(buff->sockid, &(buff->bufsize), sizeof(buff->bufsize), 0);
 
-			count += xrecv(buff->sockid, (void *)buff->buf[i], buff->bufsize, 0);
-			
+			count += xrecv(buff->sockid, (void *)buff->buf[i], buff->bufsize, 0);	
 
 			ret = pthread_mutex_unlock(&(buff->mutex[i]));
 
@@ -218,6 +220,7 @@ void play_buffer(void * buff_origin)
 			assert(ret != EDEADLK);
 #endif
 
+			printf("Playing!!\n");
 			// play code
 
 			ret = pthread_mutex_unlock(&(buff->mutex[i]));
@@ -240,6 +243,11 @@ int main(void)
 	META * meta = calloc(1, METADATA_SIZE);
 
 	BUFF buff = {
+		.buf[0] = mmap(0, PAGE_SIZE, PROT_READ | PROT_WRITE, 
+									 MAP_ANONYMOUS | MAP_PRIVATE, -1, 0),
+		.buf[1] = mmap(0, PAGE_SIZE, PROT_READ | PROT_WRITE,
+									 MAP_ANONYMOUS | MAP_PRIVATE, -1 ,0),
+		.bufsize = PAGE_SIZE,
 		.mutex[0] = PTHREAD_MUTEX_INITIALIZER,
 		.mutex[1] = PTHREAD_MUTEX_INITIALIZER
 	};
@@ -269,8 +277,6 @@ int main(void)
 			buffersize = create_buffer(&buff, meta->AvgByteRate, BUFF_MS);
 
 			pthread_create(&recv_thread, NULL, recv_buffer, (void *)&buff); // buffer RECV
-
-			//prepare_to_play();
 
 			play_buffer((void *)&buff);
 		}
