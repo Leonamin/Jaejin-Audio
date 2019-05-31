@@ -90,7 +90,16 @@ int main(void)
 			continue;
 		else
 			break;
-	}	
+	}	 
+
+	while(1)
+	{
+		recv(sockid, buff, sizeof("SIZE "), 0);
+		
+		recv(sockid, buff, sizeof(int), 0);
+
+		recv(sockid, buff, sizeof("DATA "), 0);
+	}
 
 	free(header_fmt);
 

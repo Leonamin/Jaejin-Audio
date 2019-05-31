@@ -15,6 +15,8 @@
 #include <pthread.h>
 #include <errno.h>
 
+#include "../x_io.h"
+
 #define DEBUG
 
 #define METADATA_SIZE 32
@@ -45,6 +47,8 @@ typedef struct {
 	int				bufsize;
 	pthread_mutex_t mutex[2];
 } BUFF;
+
+/* 소켓을 열고 bind 시키는 함수 */
 
 int open_socket(void)
 {
@@ -77,6 +81,8 @@ int open_socket(void)
 	return sockid;
 }
 
+/* 디버깅용 받은 메타데이터 출력 함수 */
+
 void print_metadata(META * meta)
 {
 	puts("HEADER_FMT");
@@ -94,50 +100,7 @@ void print_metadata(META * meta)
 	printf("DataSize : %u\n", meta->DataSize);
 }
 
-int xrecv(int sockid, void * dest, int size, int flag)
-{
-	struct pollfd watchfd;
-	int count = 0;
-	int ret;
-
-	watchfd.fd = sockid;
-	watchfd.events = POLLIN;
-
-	while(1)
-	{
-		ret = poll(&watchfd, 1, TIMEOUT * 1000);
-
-		if(ret == -1)
-		{
-			perror("poll()");
-			exit(EXIT_FAILURE);
-		}
-
-		if(!ret)
-			return -1;
-
-		if(watchfd.revents & POLLIN)
-		{
-			count = recv(sockid, dest, size, flag);
-	
-			if(count != size)
-			{
-				send(sockid, "RETRY", sizeof("RETRY"), 0);
-
-				continue;
-			}
-
-			else
-			{
-				send(sockid, "OK   ", sizeof("OK   "), 0);
-
-				break;
-			}
-		}
-	}
-
-	return count;
-}
+/* WAV 파일 포맷, 버퍼 초를 받아 알맞는 버퍼 사이즈를 계산 후 재할당하는 함수 */ 
 
 int create_buffer(BUFF * bufPack, unsigned int AvgByteRate, int timeMs)
 {
@@ -169,6 +132,8 @@ int create_buffer(BUFF * bufPack, unsigned int AvgByteRate, int timeMs)
 	return buffersize;
 }
 
+/* 재생하고 있는 동안 버퍼에 데이터를 받는 스레드 */
+
 void * recv_buffer(void * buff_origin)
 {
 	int ret;
@@ -176,8 +141,8 @@ void * recv_buffer(void * buff_origin)
 
 	BUFF * buff = buff_origin;
 
-	send(buff->sockid, "SIZE ", sizeof("SIZE "), 0);
-	send(buff->sockid, &(buff->bufsize), sizeof(buff->bufsize), 0);
+	xsend(buff->sockid, "SIZE ", sizeof("SIZE "), 0, TIMEOUT);
+	xsend(buff->sockid, &(buff->bufsize), sizeof(buff->bufsize), 0, TIMEOUT);
 
 	while(buff->AvgByte > count)
 	{
@@ -189,9 +154,9 @@ void * recv_buffer(void * buff_origin)
 			assert(ret != EDEADLK);
 #endif
 
-			send(buff->sockid, "DATA ", sizeof("DATA "), 0);
+			xsend(buff->sockid, "DATA ", sizeof("DATA "), 0, TIMEOUT);
 
-			count += xrecv(buff->sockid, (void *)buff->buf[i], buff->bufsize, 0);	
+			count += xrecv(buff->sockid, (void *)buff->buf[i], buff->bufsize, 0, TIMEOUT);	
 
 			ret = pthread_mutex_unlock(&(buff->mutex[i]));
 
@@ -201,6 +166,8 @@ void * recv_buffer(void * buff_origin)
 		}
 	}
 }
+
+/* 메인 스레드에서 돌아가는 재생 함수 */
 
 void play_buffer(void * buff_origin)
 {
@@ -264,7 +231,7 @@ int main(void)
 
 		while(1)
 		{
-			if(-1 == xrecv(s, (void *)meta, METADATA_SIZE, 0))
+			if(-1 == xrecv(s, (void *)meta, METADATA_SIZE, 0, TIMEOUT))
 			{
 				printf("client timed out\n");
 				break;
