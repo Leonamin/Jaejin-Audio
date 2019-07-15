@@ -18,6 +18,8 @@ Target Audio IC : PCM5122
 
 Kernel Version : bb-kernel v4.19 (Linux)
 
+Wireless Wifi card : Mediatek MT7610U (ipTIME A1000mini-UA)
+
 ### Leonamin
 
 개발 브랜치 : gui
