@@ -10,6 +10,14 @@
 
 개발 영역 : 하드웨어 구성, 임베디드 리눅스, 사운드 재생, 네트워크 스트리밍 서버
 
+Target SoC : AM3358BZCZ100 (Cortex-A8@1Ghz)
+
+Target CPU-Board : Beaglebone Black Rev C
+
+Target Audio IC : PCM5122
+
+Kernel Version : bb-kernel v4.19 (Linux)
+
 ### Leonamin
 
 개발 브랜치 : gui
