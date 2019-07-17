@@ -1,0 +1,10 @@
+<RCC>
+  <qresource prefix="newPrefix">
+    <file>res/forward.svg</file>
+    <file>res/pause.svg</file>
+    <file>res/repeat.svg</file>
+    <file>res/play.svg</file>
+    <file>res/rewind.svg</file>
+    <file>res/shuffle.svg</file>
+  </qresource>
+</RCC>
